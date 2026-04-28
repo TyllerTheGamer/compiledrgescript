@@ -617,21 +617,17 @@ function compile() {
         } else {
             bit.on = `move ${worldnum} %${bit.name} ${ac(tc, true)}`;
             bit.off = `move ${worldnum} %${bit.name} ${ac(fc, true)}`;
-            // the unoffical docs technically dont have rx ry rz on create... but I do remember them existing as args :/
-            topl(`create ${worldnum} part ${ac(tc, true)}`);
+            topl(`create ${worldnum} part ${ac(tc, false)}`);
             // I am SO grateful that % references last spawned part
             topl(`size ${worldnum} % 500 2 2`);
             topl(`rename ${worldnum} % ${bit.name}`);
         }
     }
 
-    // BITS SHOULD BE FULLY DONE RN
-
     log("Allocating triggers...");
 
     doallfunc(func => func.trigger = trigg(`_crs_func${tempnum()}`));
     for (const i of Object.values(pifs)) {
-        // I did do tif and fif, but made it confusing until I remembered- okay actually I will use the already asisgned ids...
         i.tcase = trigg(`_crs_tif${i.id}`);
         i.fcase = trigg(`_crs_fif${i.id}`);
         if (doSpeedTradeoff) {
@@ -639,7 +635,6 @@ function compile() {
             i.run = `trigger activate ${worldnum} ${i.decider.name}`;
         } else i.run = []; // will be the commands to run it, filled in next step
         const bit = vstore[i.cond];
-        // the bit makes the parts bc it has to care about how many ifs there are
         bit.ifs.push(i);
     }
     // make exposes, semi lazy, but this works :P
@@ -650,8 +645,6 @@ function compile() {
             `trigger create ${worldnum} ${name}`,
             `trigger executable ${worldnum} ${name} 1 trigger activate ${worldnum} ${func.trigger.name}`
         );
-        //const t = trigg(name);
-        //t.add(`trigger activate ${worldnum} ${func.trigger.name}`);
     }
 
     log("Generating trigger parts...");
@@ -707,23 +700,6 @@ function compile() {
     doallfunc(func => dotrigger(func.trigger, func.body));
     Object.values(pifs).map(i => {dotrigger(i.tcase, i.tbody);dotrigger(i.fcase,i.fbody)});
 
-    //log("Converting triggers to script...");
-
-    /*old sorta, redid after I actually got here
-    // should be able to return safely on islsp after this
-    log("Instructions made -> Doing for loops");
-
-    hiterred();
-    log("Finished unrolling for loops -> Doing templates");
-
-    hiterred();
-    // gonna be it merges stuff into ifs but also sorta will be making trigger seperations here
-    log("Merged templates -> Parsing into triggers");
-
-    hiterred();
-    log("Finished making triggers -> ")*/
-    // log for testing
-    //dbgwrite();
     log("Finished compiling");
     finish();
 }
@@ -788,25 +764,12 @@ function ccopy(base) {
     return res;
 }
 
-// super itd function basically, relevent convo would be down by dofollows
-// first does setfollows, then bubbles up itd, almost said I would want it to checklist
-// whether it's done an if, but no, would be that when it inserts escapes, it just doesn't
-// reparse, and otherwise all ifs are still unique
-
-
 // capture segment, del is whether to splice what we capture
 // captures until end, or doif and includes the doif
 function capseg(scope, start, del) {
     const capped = [];
     for (let i = start; i < scope.length; del ? null : i++) {
         const entry = scope[i];
-        // ignore setfollow
-        /*if (entry.op == "setfollow" || entry.op == "consedsetfollow") {continue;
-            if (del) scope.splice(i, 1);
-        }*/
-        //if (entry.op == "consedsetfollow") {i++;continue;}
-        // break and don't include so itd can handle
-        //if (entry.op == "escaped") break;
         if (["escaped", "doif"].includes(entry.op)) {
             capped.push(entry);
             break;
@@ -823,14 +786,12 @@ function fullitd(scope) {
         const {id} = d.v;
         const seg = capseg(d.s, d.i, false);
         followups[id] = seg;
-        //console.log(id);
         return {
             op:"nop", // do consedsetfollow if want to show it in ast
             escop: d.v.escop,
             id: d.v.id
         };
     });
-    //dbgwrite("./ulog.txt");
     // immediately pass to nest since rest would be all the same
     itdnest(scope);
 }
@@ -858,8 +819,6 @@ function itdnest(scope, tail=[]) {
             continue;
         }
         if (op == "escaped") {
-            // possible since we do consed set follow :/
-            //if (i != scope.length - 1) throw new TypeError(`Compiler somehow got escaped op before end of scope, this should be impossible`);
             const seg = followups[scope[i].id];
             // comment out for debug seeing, leaving doesn't break anything
             scope.pop(); // remove the escaped op
@@ -873,7 +832,7 @@ function itdnest(scope, tail=[]) {
             // always will want this
             let me = scope[i];
             let didcons = false;
-            if (consed) { //  && !scope[i].ranitd
+            if (consed) {
                 didcons = true;
                 // this doif was next
                 // splice us from it, we're a doif so we're already in there
@@ -883,11 +842,7 @@ function itdnest(scope, tail=[]) {
                 // queue should work for proper ordering of some niche cases
                 queue.push([curr.tbody, got]);
                 queue.push([curr.fbody, got]);
-                //itdnest(curr.tbody, got);
-                //itdnest(curr.fbody, got);
-                //curr = lkupif(me);
-            }// else if (scope[i].ranitd) {
-            //}
+            }
             // we always do this for doifs
             consed = true;
             //console.log(me, scope);
@@ -898,8 +853,6 @@ function itdnest(scope, tail=[]) {
             curr = lkupif(me);
             // actually defo need to handle it, so if we ranitd, it's that this is in an escape, I was about to say I should run over all set follows, but if an escape leads to another escape that would still be able to screw up... maybe
             // not sure if I need to do anything here??
-            //if (curr.ranitd) console.log(curr.id);
-            //curr.ranitd = true;
             got = capseg(scope, i, true);
             // skips this one :P
             // okay turned it to a kinda sketchy, but this should work, nvm not that sketchy cus no break like I was planning
@@ -1162,10 +1115,6 @@ function doitd(scope, tail = []) {
     let docond; // temp for migrating
     for (let i = 0; i < scope.length; capturing ? null : i++) {
         // purge nop, just cus
-        /*if (scope[i].op == "nop") {
-            scope.splice(i, 1);
-            if (!capturing) i--;
-        }*/
         if (capturing && scope[i].op != "if") {
             store.push(scope.splice(i, 1)[0]);
             continue;
@@ -1175,10 +1124,6 @@ function doitd(scope, tail = []) {
         if (capturing) {
             // we found an if, so we can send our store up the chain and stuff
             // store a call to this next if
-            /*if (docond) store.push({
-                op: "cond",
-                id: scope[i].id
-            });*/
             doitd(curr.tbody, store);
             doitd(curr.fbody, store);
             // now handle this if we just found
@@ -1188,10 +1133,6 @@ function doitd(scope, tail = []) {
         } else {
             // first capture really
             // insert a call to this first if
-            /*if (docond) scope.splice(i, 0, {
-                op: "cond",
-                id: scope[i].id
-            });*/
             capturing = true;
             curr = scope[docond ? i+1 : i];
             store = [...tail];
@@ -1202,7 +1143,6 @@ function doitd(scope, tail = []) {
     }
     // we got to the end of the scope instead of hitting another if/this was the last if
     if (capturing) {
-        //store.push(...tail);
         doitd(curr.tbody, store);
         doitd(curr.fbody, store);
     } else { // if this is false then we had no ifs here, will always chain down to hitting this
@@ -1220,48 +1160,11 @@ function sprcheck(scope, i) {
     }
 }
 
-/*ESCAPE CRAWLER IDEAS
-
-been going crazy trying to think of this stuff, so current idea
-pass the top scope, when it hits the escape op, it shoves an unlock op to the top
-    scope, then marks the current if as locked, and it only atkes tails outside,
-    oh that is iffy, tempted to go back to my idea of bubble up itd always and just
-    fill in if missing, acutally okay no, that wouldnt work, bc it needs to be, it
-    can only buble up-, acutally, it would just be a lock on conditions?? maybe,
-    gonna try running with it
-
-realized something, I need to pass a tail/followup, okay, defo gonna group stuff as
-    instruct groups, that way I can properly have it be reference, so escapes will
-    insert at the top to set the, okay will do as followups that are seperate from
-    ifs, so will be an op that sets the followup, and then just points to the specified
-    followup, so will be when something like itd or a new itd hits a setfollow op, it sets
-    in the followup store that stuff, yeah that should work
-
-current system now is gonna be to insert stuff you need to use esc, which sounds like
-    weird forced overlap but logically you would want to be able to escape any scope you
-    insert into
-OKAY FOR SURE PLAN, will go through and read follows, set them how itd did as until end of
-    the scope or next if, capture that, consume teh set follow and prolly leave a remant
-    op for the AST view/ulog thing
-
-
-*/
-
 // might actually wanna combine escape and itd... hmmm
 
 let followups = {};
 
-// defo gonna be the new itd
-/* PLAN FOR DO FOLLOWS
-
-several steps almost certainly
-
-first, find all setfollows and parse em
-
-
-okay might not need follows actually
-
-*/
+// unused
 function dofollows(scope) {
 
 }
@@ -1284,13 +1187,7 @@ function doesc(scope, op) {
 function crawlesc(scope, op, id) {
     for (let i = 0; i < scope.length; i++) {
         // only check if we don't nest, bc no nesting ops can logically be escape characters
-        //console.log(scope[i].op == op);
-        //console.log(scope[i].op);
-        //console.log(op);
-        //if (scope[i].op == op) throw new SyntaxError("actually got it");
         if (!_trycnest(crawlesc, scope[i], op, id) && scope[i].op == op) {
-            //console.log(scope);
-            //console.log("Y")
             scope.splice(i);
             // debug filler
             scope.push({
@@ -1298,7 +1195,6 @@ function crawlesc(scope, op, id) {
                 fromop: op,
                 id
             });
-            //console.log(scope);
             break; // just to be clean
         }
     }
@@ -1367,11 +1263,6 @@ function* allssb() {
 }
 
 
-// crawl funcs expected to be passed a scope array, so template and func d property
-// was gonna return {val,idx}, then realized _crawl should auto scope crawl, and that fully
-// doing {val,idx,scope} is verbose, so {v,i,s}
-
-// ooo was considering making this a generator function, I won't, but would of let me use it and have it yeild all results, some way to let you say waht to replace, but mainly would be able to use that to find all loops manually
 // crawl a scope cyclicly, if the current op is op, replaces it with cb(d)
 function crawltrans(scope, op, cb) {
     for (const d of _crawl(scope, op)) {
@@ -1462,22 +1353,12 @@ const rvcheck = /^[*%]?[a-zA-Z_]\w*$/; // real var check, can't be a compiler va
 const cvcheck = /^[*%]?#[a-zA-Z_]\w*$/; // compiler var check
 const pcheck = /^[#]?[a-zA-Z_]\w*$/; // param check, specifically is a param in a template
 const numc = /^\d+$/; // used this so many times I just gotta make a const for it
-/* ^ explanation of valid token
-^ start
-[*%]? global or function, basically source denoters
-[#]? compiler var denoter, works for % bc the # is in the var name
-\w* contents, alphanumeric and _, nmbers count as tokens
-$ end
 
-*/
 // verifies the token isn't illegal, we capture like above to prevent trying to screw with the compiler
 function checktoken(txt) {
     const res = validtoken.match(txt);
     if (!res) throw new TypeError(`Text "${txt}" failed token parser`);
 }
-// old, was gonna do these but a general token thing is better
-//const token = /^[a-zA-Z][a-zA-Z0-9]*/; // token check for everything, not /w bc we can't allow _ usage
-//const cvar = /^\#\w*/; // compiler var, special just cus yeah
 
 // checks
 const posint = (n) => {Number.isInteger(n) && n > 0};
@@ -1532,73 +1413,10 @@ let loops = []; // loop store for unrolling and doing continue and break
 let ploops = [];
 let ptemps = [];
 let pifs = {};
-/*thought a bit of how template store should work, current plan
-
-two ops, set template param, and pop, wording is intentional, uses are turned into both
-tstore is like this
-{
-    #param1: [4, 5]
-    another: [{varref...}, {varref...}]
-}
-
-reading reads from end, and pop op removes the end, so multiple templates with the same param name still maintain while nesting
 
 
 
 
-
-
-
-*/
-
-
-
-// patterns for type checking and verifying it works
-// patterns denote instructions, so they won't go inside another instruction
-// gpats are global, s is scope (includes for and if), f is function, t is template
-/*patterns guide
-| means or, can be any of the valid
-start symbols mean type (just symbol/label actually)
-    T - token
-    K - keyword
-    E - encloser, next is sym to check
-    V - variable, token and is valid variable
-    v - variable reference, token that is valid existing var or related
-    a - any, captures whatever is next
-    * - all, captures until next keyword, main reason is for compiler vars if you want to set it to a dot notation or whatever for some reason
-    B - bit, token that is 0 or 1
-    Rv - real var, must be existing and not a compiler var
-    W - word, uses valid word regex
-    t - trigger, uses valid trigger regex
-    VV - variable value, a valid value for a variable
-    Wl - word loose, W or nsget or compiler var
-
-
-
-
-vars are gonna need alot of stuff for namespace checks
-
-
-    
-    
-very much thinking how tf I wanna do this as I do it
-
-
-will default turn into base obj {
-    op: (keyword),
-    // actually not sure if I would ever need idx
-    idx: (idx), // decided must be on all ops, func and template don't need it cus they can't be wrong after
-    whatever params based on op
-}
-
-will check args and look ahead (used to be leads but args is cleaner)
-will call exec(...val)
-if exec returns something it will be returned as the instruction
-
-
-
-
-*/
 
 function getname(name, usens) {
     return (usens ? currns : currscope).d[name];
@@ -1622,60 +1440,6 @@ function regexpect(reg, obj) {
     if (!reg.test(obj.val)) issue(obj, `Failed regex "${reg}"`);
     else return reg.test(obj.val);
 }
-
-/*var system explanation
-
-
-
-gonna be vars point to real data, groups are a lil special but still consistent
-
-
-
-
-base variable types
-
-compiler var special or raw token \/
-number: {
-    type: "num",
-    num: number
-}
-
-compiler vars only \/
-template: {...}
-func: {...}
-
-
-reg vars \/
-bit: {
-    type: "bit",
-    idx: idx/id in vstore,
-    state: true/false, - initial value
-}
-
-group: {
-    type: "group",
-    data: [gentry], - group entries, see gentry type
-}
-
-meta \/
-gentry: {
-    type: "bit|group", // either or
-}
-
-was gonna have em use val but that's val on a var object val, so v.val.val
-
-oh yeah also gotta remove the rtype cus this makes there be no point in it
-
-OKAY I HAVE FULLY REALIZED/THOUGHT OUT THIS
-we dont need to store the real variables anywhere actually
-on all scopes declaring a var will just set that word on the scope to this, and the naming
-scheme will somewhat auto parse into it, so I gotta kinda rework parsevref actually AHHH-
-
-
-
-
-
-*/
 
 
 
@@ -1828,15 +1592,6 @@ function wlparse(obj) {
     }
 }
 
-
-/*stuff thought regarding parsevref
-
-
-gahh gonna need to crawl this to rework it to be the return the var's value more so
-
-gonna be more so a parse reference to a word... which ig is what vars are
-
-*/
 function parsevref(obj, forcecomp) {
     obj = tryns(obj);
     // all other's will boil down to most of the time calling again and it going into the token case
@@ -1891,22 +1646,6 @@ function parsevref(obj, forcecomp) {
         expect(acc, "type", "num");
         if (acc.num >= base.len.num) issue(obj.prop, `Group "${obj.base.val}" only has "${base.len.num}" entries, wanted index "${acc.num}"`);
         return base.data[acc.num];
-
-        /*
-        return {
-            type: "var",
-            base,
-            acc,
-            // legit have to change a bunch of stuff for this case cus I have to have all the base var flags avaliable on here...
-            // gotta legit make group and notgroup flags prolly, or well, just never rely on !v.group
-            group: true,
-            comp: false,
-            param: base.param,
-            name: `${base.name}_get_${obj.prop.val}`,
-            rtype: "get",
-            // could error, well really only if acc type is ref
-            token: obj
-        };*/
     } else if (obj.t == "combiner") {
         // pre and aft, pre can be a few things, but ends as a compiler var, aft can be compiler var or number
         // can't guarentee pre type but aft can only be a number or compiler var
@@ -1919,10 +1658,8 @@ function parsevref(obj, forcecomp) {
                 type: "num",
                 num: parseInt(obj.aft.val)
             };
-            //type = "direct";
         } else {
             aft = parsevref(obj.aft, true);
-            //type = "ref";
         }
         // gonna expect stuff here now bc migrating to the return stuff philosophy
         expect(aft, "type", "num");
@@ -1933,21 +1670,6 @@ function parsevref(obj, forcecomp) {
             type: "num",
             num: out
         };
-        /* we calculate that here now baby
-        return {
-            type: "combine",
-            mode: obj.mode.val, // already - or +
-            pre,
-            aft,
-            acc: type,
-            comp: true,
-            group: false,
-            param: pre.param,
-            name: `combine_${obj.mode.val}_${pre.name}_${aft.val}`, // for logging
-            rtype: "combine",
-            // do have to pass idx here and a few other places, or well, base token reference, but instead of being universal only where can actually error from here
-            token: obj
-        };*/
     }
 }
 
@@ -1962,7 +1684,7 @@ const dummytoken = (base, val) => ({
 // when starting to make these I considered making a toString method on all the stuff, but it's fineee
 // NOTE ON INTENT: base token objects from CST should not be still there after patterns
 const gpats = {
-    namespace: { // DONE
+    namespace: {
         args: ["W"],
         exec(nsobj) {
             const ns = nsobj.val;
@@ -1979,7 +1701,7 @@ const gpats = {
             // was gonna return but we can have it all parse onto the ns object
         }
     },
-    copy: { // DONE
+    copy: {
         args: ["W", "W"],
         exec(name, from) {
             const base = nameused(true, name, true);
@@ -1987,7 +1709,7 @@ const gpats = {
             currns.d[name.val] = JSON.parse(JSON.stringify(base));
         }
     },
-    template: { // DONE
+    template: {
         args: ["W", "E(", "E{"],
         exec(name, rargs, script) {
             nameused(false, name, true);
@@ -2003,7 +1725,6 @@ const gpats = {
                 // realized params mean I don't need tstore, bc it references up and if you do cyclic we can just error bc that's a forever loop
                 // we'll also be doing the whole dont pass a regular var as a compiler var via uh, well you have to do %#param, and that # means it can't be a regular var even if you passed one... cus fields don't overlap :D
                 params[name] = null;
-                //if (!tstore[name]) tstore[name] = [];
             }
             const scope = {
                 type: "template",
@@ -2015,17 +1736,10 @@ const gpats = {
             };
             // do lazy loading
             scope.script = script.val;
-
-            //currscope = scope;
-            // this is the body, the script is raw CST, body is instructions
-            //const body = doPatterns(script.val, tpats);
-            // already verified that this isn't already defined on the namespace
-            //scope.body = body;
-            // used to be type body and scope on a new obj but this is simplier
             currns.d[name.val] = scope;
         }
     },
-    func: { // DONE
+    func: {
         args: ["W", "E{"],
         exec(name, script) {
             nameused(false, name, true);
@@ -2042,27 +1756,27 @@ const gpats = {
             scope.body = body;
         }
     },
-    global: { // DONE
+    global: {
         args: ["V", "VV"], // can be alot cus compiler vars
         exec(name, val) {
             nameused(false, name, true);
             currns.d[name.val] = parsevar(name, val);
         }
     },
-    init: { // DONE
+    init: {
         args: ["E["],
         exec(body, _) {
             issue(_, "Init is currently not avaliable in this early release of the compiler, as detecting when a bot ain't here to reinitalize is a bit tricky :/");
             inits.push(...body.val);
         }
     },
-    globalinit: { // DONE
+    globalinit: {
         args: ["E["],
         exec(body) {
             ginits.push(...body.val);
         }
     },
-    expose: { // DONE
+    expose: {
         args: ["W", "t"],
         exec(name, trigger) {
             const func = nameused(true, name, true);
@@ -2074,7 +1788,7 @@ const gpats = {
     }
 };
 const spats = {
-    set: { // DONE
+    set: {
         args: ["Rv", "B"], // you can only set regular vars to bits, compiler vars can't be changed (except for the internal thing for for loops)
         exec(name, state) {
             nameused(false, name, false);
@@ -2088,7 +1802,7 @@ const spats = {
             }
         }
     },
-    call: { // DONE
+    call: {
         args: ["Wl"],
         exec(name) {
             const func = wlparse(name);
@@ -2102,7 +1816,7 @@ const spats = {
             }
         }
     },
-    use: { // DONE
+    use: {
         args: ["Wl", "E("],
         exec(name, params) {
             const temp = wlparse(name);
@@ -2113,8 +1827,6 @@ const spats = {
             const args = [];
             // was gonna let you pass numbers, but will be you can only pass variables
             for (const param of params.val) {
-                //expect(param, "t", "token");
-                //if (!match(param, "V")) issue(param, `Only variables can be passed to templates, "${param.val}" can not be a variable`);
                 const vari = parsevref(param, false);
                 args.push(vari);
             }
@@ -2127,8 +1839,6 @@ const spats = {
             currscope = temp;
             const nsstore = currns;
             currns = allns[temp.ns];
-            //console.log(currscope.params);
-            //if (name?.label?.val == "gcopy") debugger; // tryna catch gcopy to debug this random issue
             const body = doPatterns(clone(temp.script), tpats, "super");
             if (body[0] == "undefined") debugger;
             temp.inuse = false; // reset the flag
@@ -2149,7 +1859,6 @@ const spats = {
             // should never be on the current scope, prevents either reusing an existing for loop var or using an existing compiler var
             nameused(false, vname, false);
             regexpect(cvcheck, vname);
-            //const vari = parsevar(vname, dummytoken(vname, "0"));
             // parse the args
             let cfg = {};
             if (match(rcfg.val[1], "E(")) {
@@ -2163,7 +1872,6 @@ const spats = {
                     // so it doesn't error if it fails
                     // old, didn't seem to work
                     if (!tok.val || !numc.test(tok.val)) out = parsevref(tok, true);
-                    //out = isswrap(parsevref, tok, false).res;
                     // res is undefined if it errored meaning couldn't get a compiler var
                     out ??= {
                         type: "num",
@@ -2218,10 +1926,6 @@ const spats = {
             currscope.d[vname.val] = null;
             currscope.inloop = inloopstore; // reset
             loops.push(bodies);
-            //currscope.d[vname.val] = vari.val;
-            //const body = doPatterns(script.val, spats);
-            //delete currscope.d[vname.val];
-            // realized I should save the idx instead of body so I can more cleanly log as I'm dealing with loops
             return {
                 op: "for",
                 idx: loops.length - 1
@@ -2253,17 +1957,7 @@ const spats = {
     if: {
         args: ["Rv", "E{", "K", "E{"],
         exec(vari, script, _, escript) {
-            //nameused(false, vari, false);
-            //console.log(vari);
             const val = parsevref(vari);
-            //console.log(val);
-            // MANUALLY CHECKIGN PAUSE
-            //console.log(vari);
-            //console.log(vari.val.substring(1));
-            //console.log(currscope);
-            //console.log(nameused(true, dummytoken(vari, vari.val.substring(1)), true));
-            //if (varref.comp) issue(vari, `Compiler vars can not be used for if conditions`);
-            //if (varref.group) issue(vari, `Variable groups can not be used directly in if conditions`);
             // just gonna expect a bit
             expect(val, "type", "bit");
             const body = doPatterns(script.val, spats);
@@ -2287,7 +1981,7 @@ const spats = {
 };
 const varicfg = {
     args: ["V", "VV"],
-    exec(name, val) { // DONE
+    exec(name, val) {
         nameused(false, name, false);
         const curr = parsevar(name, val);
         currscope.d[name.val] = curr;
@@ -2323,9 +2017,6 @@ function patiss(obj, text, override) {
 // store for if unrolling
 let allscopes = []; // funcs and templates (others are all gotten dynamically)
 function doPatterns(data, pats, scopetype) {
-    // omg I made so much and legit forgot to actually have the object instructions will be put into
-    // kinda realized, okay so I DON'T need this for global, but that's the only place I don't, since global scope is only definitions, since the global vars can't be modified
-    // okay global scope is just not gonna do anything/have anything returned, the only thing it would be is allns but that has to be referencable in exec and such so it can't be this
     const store = [];
     if (scopetype == "super") {
         allscopes.push(store);
@@ -2373,9 +2064,6 @@ function doPatterns(data, pats, scopetype) {
                 }
                 continue;
             }
-            //if (match(arg, "K")) patiss(arg, `Got keyword "${arg.val}" when parsing arguments for keyword "${next.val}"`, next);
-            // GOING INSANE, it's SOMEHOW saying t token and val 1 is NOT VV?????
-            //if (apat == "VV") debugger;
             if (!match(arg, apat)) patiss(arg, `Keyword "${next.val}" got "${arg.val}", which is not "${matchlabels[apat]}"`, arg);
             args.push(arg);
         }
@@ -2406,9 +2094,8 @@ function doPatterns(data, pats, scopetype) {
 
 let currcbv = null;
 function cbvno(msg) {
-    return false
+    return false;
     // was gonna do this, but nvm mmmm
-    //issue(currcbv, `Not a variable; ${msg}`);
 }
 
 
@@ -2488,7 +2175,6 @@ function match(obj, pat) {
         return canbevar(obj, validvar) ||
         (obj.t == "token" && validtoken.test(obj.val)) ||
         (obj.t == "encloser" && obj.sym== "<" &&
-            // call this like, I traumatically use this cus ik it from minified code (bc you should consider reading minified code as trauma)
             (didx = obj.idx, edidx = obj.eidx, obj.val.every(v => match(v, "VV")))
         );
     } else if (pat == "Wl") {
@@ -2524,6 +2210,7 @@ const tflags = {
 const is = (obj, flag) => tflags[obj.v].includes(flag);
 
 
+// IMPORTANT, need to fix comment so you cant do //*/ and have */ be removed
 function cleanText() {
     // originially had my own of these two but then realized I need to preserve the count so ai helped me with this
     // Remove multiline comments but keep every newline character found inside
@@ -2532,7 +2219,6 @@ function cleanText() {
     });
     // Remove single line comments but keep the newline (\n)
     curr = curr.replace(/\/\/.*$/gm, (match) => " ".repeat(match.length));
-    //fs.writeFileSync("./dbgout.txt", curr);
     // ty gemini
     // Regex: Find !, then capture everything until the newline or end of file
     // Replace using the first group (the command content)
@@ -2553,8 +2239,7 @@ function parseStr(str) {
                 capping = false;
                 str = str.slice(1);
                 cidx++;
-                // kinda questionable, but SHOULD work
-                //const ridx = cidx;
+                // kinda questionable, but works
                 const rcurr = curr;
                 const rcdat = cdat;
                 cdat = [];
@@ -2709,7 +2394,6 @@ function parseText() {
                 edidx = cidx;
                 if (!res) throw TypeError(`Failed parsing when ${curr.length} symbols were left, "${curr}"`);
                 curr = curr.slice(res[0].length);
-                //console.log(`${res[0]} at ${cidx}`);
                 if (keywords.includes(res[0])) {
                     cdat.push({
                         t: "keyword",
@@ -2738,8 +2422,6 @@ function parseText() {
 // constants for polishing
 const combiners = ["-", "+"];
 // was gonna do this but hardcoding is fine
-//const prefixes = ["."];
-//const suffixes = [":"];
 const gaccessor = ".";
 const nsaccessor = ":";
 
@@ -2835,11 +2517,6 @@ function consows() {
 function constoken() {
 
 }
-
-
-
-
-
 
 
 
