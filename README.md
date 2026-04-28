@@ -4,17 +4,6 @@ This is a "compiler" for RGE in BRM5. The primary purposes of the involved syste
 1. Use basic logic systems within RGE with minimal manual setup
 2. Import any text file into the RGE console
 
-
-## MD
-
-## Table of Contents
-
-
-
-
-
-
-
 ## Compiler
 
 The compiler uses `.crs` files, converting them to `.txt` files of commands which you can easily use the Importer to put in game.
@@ -153,36 +142,4 @@ func toggle {
 }
 expose toggle FlipState
 ```
-
-
-
-
-
-
-
-
-
-
-## Importer
-
-The importer is relatively simple, but still extremely useful.
-
-It takes one parameter, the file to import.
-
-Upon running, if you do not pass a file name (such as running it via clicking), it will ask for a file name before starting.
-
-When it starts, you will have 10 seconds to get to the game before it starts pasting.
-
-When it stops it has fully ended, it only waits a small time between inputs so that is your clear tell.
-
-
-
-
-
-
-
-
-
-
-
 
