@@ -5,7 +5,7 @@ import * as readline from "node:readline/promises";
 //import readline from "node:readline";
 import process, { threadCpuUsage } from "node:process";
 
-const DEBUG = true;
+const DEBUG = false;
 
 // gonna first do config stuff
 
@@ -16,19 +16,17 @@ const defaultConfig = {
     zOrigin: 1000,
     xMirrored: false,
     zMirrored: false,
-    doCommandSpeedTradeoff: true
+    doCommandSpeedTradeoff: false // DOESNT WORK, turns out triggers cant run trigger executable
 };
 
-const runbuilt = true; // was gonna be isSea(), but ngl better to do it like this
+const runbuilt = true;
 
 
 // ai helped me with CLI/sea stuff generally, well more notably then the rest of it
-// process.argv.slice(1)
 
 // lazy started so I don't have to shove this at the bottom
 async function startBuilt() {
     // first check config
-
     if (!fs.existsSync("crsconfig.json")) {
         console.log(`Could not find "crsconfig.json" file.`);
         fs.writeFileSync("crsconfig.json", JSON.stringify(defaultConfig, null, 4));
@@ -42,7 +40,8 @@ async function startBuilt() {
     basecords.x = cfg.xOrigin;
     basecords.y = cfg.yOrigin;
     basecords.z = cfg.zOrigin;
-    doSpeedTradeoff = cfg.doCommandSpeedTradeoff;
+    if (cfg.doCommandSpeedTradeoff) console.warn(`The command speed tradeoff method does not work.`);
+    doSpeedTradeoff = false;//cfg.doCommandSpeedTradeoff;
     worldnum = cfg.worldId;
     const args = await checkParams();
     if (!fs.existsSync(args[0])) {
