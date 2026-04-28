@@ -689,7 +689,7 @@ function compile() {
                     );
                     // shouldn't ever need to reference these parts after
                     latel(
-                        `create ${worldnum} part ${ac(pcord, true)}`,
+                        `create ${worldnum} part ${ac(pcord, false)}`,
                         `size ${worldnum} % 2 11 2`,
                         `trigger add ${worldnum} %`,
                         `trigger set ${worldnum} % ${t.name} True`,
