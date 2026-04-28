@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+# Required to allow the runner to create a Release and upload files
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build on ${{ matrix.os }}
@@ -31,13 +35,14 @@ jobs:
       - name: Update sea.json output path
         shell: bash
         run: |
-          sed -i 's/"output": ".*"/"output": "${{ matrix.output_name }}"/' sea.json
+          node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync('sea.json')); c.output='${{ matrix.output_name }}'; fs.writeFileSync('sea.json', JSON.stringify(c, null, 2));"
 
       - name: Build the executable
         run: node --build-sea sea.json
 
-      - name: Upload executable artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload to Release Assets
+        uses: softprops/action-gh-release@v2
         with:
-          name: ${{ matrix.output_name }}-artifact
-          path: ${{ matrix.output_name }}
+          files: ${{ matrix.output_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
