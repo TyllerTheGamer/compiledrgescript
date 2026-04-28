@@ -1,0 +1,19 @@
+{
+  "name": "compiledrgescript",
+  "version": "1.0.0",
+  "description": "Compiled RGE Script for BRM5",
+  "license": "ISC",
+  "author": "tyllerthegamer",
+  "type": "module",
+  "main": "conv.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node conv.js"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "chalk": "^5.6.2",
+    "clipboardy": "^5.3.1",
+    "vscode-languageserver": "^9.0.1"
+  }
+}
