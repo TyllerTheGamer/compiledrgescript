@@ -3,7 +3,7 @@ name: Build SEA Executable
 on:
   push:
     tags:
-      - 'v*' # Runs when a version tag is pushed
+      - 'v*'
 
 jobs:
   build:
@@ -28,11 +28,16 @@ jobs:
         with:
           node-version: '25'
 
+      - name: Update sea.json output path
+        shell: bash
+        run: |
+          sed -i 's/"output": ".*"/"output": "${{ matrix.output_name }}"/' sea.json
+
       - name: Build the executable
-        run: node --build-sea sea.json ${{ matrix.output_name }}
+        run: node --build-sea sea.json
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.output_name }}
+          name: ${{ matrix.output_name }}-artifact
           path: ${{ matrix.output_name }}
