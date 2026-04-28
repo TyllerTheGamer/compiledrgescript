@@ -1,0 +1,38 @@
+name: Build SEA Executable
+
+on:
+  push:
+    tags:
+      - 'v*' # Runs when a version tag is pushed
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            output_name: my-compiler-linux
+          - os: windows-latest
+            output_name: my-compiler.exe
+          - os: macos-latest
+            output_name: my-compiler-macos
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build the executable
+        run: node --build-sea sea.json ${{ matrix.output_name }}
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output_name }}
+          path: ${{ matrix.output_name }}
