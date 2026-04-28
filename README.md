@@ -4,6 +4,8 @@ This is a "compiler" for RGE in BRM5. The primary purposes of the involved syste
 1. Use basic logic systems within RGE with minimal manual setup
 2. Import any text file into the RGE console
 
+See [Maxikxng's Importer](https://github.com/Maxikxng/BRM-5-Importer/tree/main) to import.
+
 ## Compiler
 
 The compiler uses `.crs` files, converting them to `.txt` files of commands which you can easily use the Importer to put in game.
