@@ -17,6 +17,11 @@ node_modules/
 !package-lock.json
 !sea.json
 
+# exclude issues log
+
+!issues.txt
+
+
 # old python import file
 
 old.py

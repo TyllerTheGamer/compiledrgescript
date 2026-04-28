@@ -1,0 +1,47 @@
+
+issue log for easy intergration in VSC
+
+
+KNOWN
+
+
+[Minor]
+Extension tracing can get errors that do not exist when others are fixed, this is unfixable and due to the other errors causing it.
+
+
+
+
+
+
+RESOLVED
+
+
+
+
+
+
+
+
+
+
+INVESTIGATE
+
+
+
+[Moderate]
+If a template defines a local, and you call it twice in the same superscope (tested with both cases of an if) it will think the variable is defined twice
+
+
+
+
+
+
+
+POSSIBLE
+
+
+
+
+
+
+

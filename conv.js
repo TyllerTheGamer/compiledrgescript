@@ -5,6 +5,8 @@ import * as readline from "node:readline/promises";
 //import readline from "node:readline";
 import process, { threadCpuUsage } from "node:process";
 
+const DEBUG = true;
+
 // gonna first do config stuff
 
 const defaultConfig = {
@@ -505,10 +507,11 @@ function compile() {
 
     const temptrans = d => {
         ptemps.push(d.v.body);
+        const idx = ptemps.length - 1;
         crawltrans(d.v.body, "use", temptrans);
         return {
             op: "tempuse",
-            idx: ptemps.length - 1
+            idx
         };
     };
     opcollect("use", temptrans);
@@ -556,11 +559,12 @@ function compile() {
 
     //log("");
 
-    //dbgwrite("preulog.txt", true);
+    if (DEBUG) dbgwrite("preulog.txt", true);
 
     log("Inlining templates...");
 
     doallfunc(func => {
+        const {body} = func;
         const useCrawler = d => {
             const body = ptemps[d.v.idx];
             crawltrans(body, "tempuse", useCrawler);
@@ -569,9 +573,10 @@ function compile() {
                 body: body
             };
         }
-        crawltrans(func.body, "tempuse", useCrawler);
-        crawlspread(func.body);
+        crawltrans(body, "tempuse", useCrawler);
+        crawlspread(body);
     });
+
 
     //log("Doing follow ups for inlined templates...");
 
@@ -579,7 +584,7 @@ function compile() {
 
     doallfunc(func => fullitd(func.body));
 
-    //dbgwrite("ulog.txt"); // don't do templates bc they're inlined
+    if (DEBUG) dbgwrite("ulog.txt"); // don't do templates bc they're inlined
 
     log("Finished processing instructions; Converting to triggers");
     // wip on what logs I will do cus as of writing Im debugging itdnest
@@ -810,7 +815,6 @@ function itdnest(scope, tail=[]) {
     let got;
     let curr;
     let queue = [];
-    if (scope.some(e => e.id == 52)) debugger;
     for (; i < scope.length; incing ? i++ : null) {
         const {op} = scope[i];
         // we cut from a doif that was already parsed, meaning long chain of events but this is safe
@@ -989,9 +993,11 @@ function dbgwrite(file, dotemps) {
                 gulog(entry);
             }
             depth--;
-        } else {
+        } else if (v.type == "bit") {
             ulog(`bit ${getv(v)} ${v.state ? "1" : "0"}`);
-        }
+        } else if (v.type == "str") {
+            ulog(`str ${getv(v.dbgid)} "${v.text}"`);
+        } // else shouldn't happen
     };
 
     if (dotemps) {
@@ -1038,8 +1044,8 @@ function dbgwrite(file, dotemps) {
                 gulog(obj[1]);
             } else if (type == "template") {
                 // do nothing
-            } else if (type == "") {
-
+            } else if (type == "str") {
+                ulog(`str ${getv(v.dbgid)} "${v.text}"`);
             } else if (type == "") {
 
             } else if (type == "") {
@@ -1054,8 +1060,8 @@ function dbgwrite(file, dotemps) {
         }
         depth--;
     }
-    //fs.writeFileSync("./ast.json", safeStringify({pifs, newans}));
-    //fs.writeFileSync(file, unlog.join("\n"));
+    fs.writeFileSync("./ast.json", safeStringify({pifs, newans}));
+    fs.writeFileSync(file, unlog.join("\n"));
 }
 
 
@@ -1154,10 +1160,14 @@ function doitd(scope, tail = []) {
 // lazy check for spread to manually parse
 function sprcheck(scope, i) {
     // just in case it somehow nests
+    //let was = false;
     while(scope[i].op == "spread") {
+        //was = true;
+        //console.log("main", scope, "body", scope[i].body);
         const inst = scope[i];
         scope.splice(i, 1, ...inst.body);
     }
+    //if (was) console.log("End", scope);
 }
 
 // might actually wanna combine escape and itd... hmmm
@@ -1268,7 +1278,6 @@ function crawltrans(scope, op, cb) {
     for (const d of _crawl(scope, op)) {
         d.s[d.i] = cb(d);
     }
-    return scope;
 }
 
 
@@ -1466,7 +1475,8 @@ function _vpbase(base) {
         name = name.substring(1);
         obj.param = true;
     }
-    if (start("#")) {
+    // bc we modify it bind no longer is good
+    if (name.startsWith("#")) {
         obj.comp = true;
     }
     obj.name = name;
@@ -1553,10 +1563,13 @@ function parsevar(base, value) {
                     if (out.type != "str") sissue(v, `Expected type "str" for insertion, got type "${out.type}"`);
                     val = val.replace(`@${i}@`, out.text);
                 });
+                // only for backref
                 data.val = {
                     type: "str",
-                    text: val
+                    text: val,
+                    dbgid: tempnum(),
                 };
+                dbgvlkup[data.val.dbgid] = data.name;
             } else issue(value, `Only bits or strings can be assigned to regular variables, expected "0", "1", or a string, and got type "${value.t}" with value "${value.val}"`);
         }
     }
@@ -1664,7 +1677,7 @@ function parsevref(obj, forcecomp) {
         // gonna expect stuff here now bc migrating to the return stuff philosophy
         expect(aft, "type", "num");
         expect(pre, "type", "num");
-        let out = obj.sym.val == "+" ? pre.num + aft.num : pre.num - aft.num;
+        let out = obj.sym == "+" ? pre.num + aft.num : pre.num - aft.num;
         if (out < 0) issue(obj, `Result of a combiner can not be negative, got "${out}"`);
         return {
             type: "num",
@@ -1840,7 +1853,6 @@ const spats = {
             const nsstore = currns;
             currns = allns[temp.ns];
             const body = doPatterns(clone(temp.script), tpats, "super");
-            if (body[0] == "undefined") debugger;
             temp.inuse = false; // reset the flag
             temp.params = pstore;
             currscope = scopestore;
@@ -2176,7 +2188,7 @@ function match(obj, pat) {
         (obj.t == "token" && validtoken.test(obj.val)) ||
         (obj.t == "encloser" && obj.sym== "<" &&
             (didx = obj.idx, edidx = obj.eidx, obj.val.every(v => match(v, "VV")))
-        );
+        ) || obj.t == "combiner";
     } else if (pat == "Wl") {
         return match(obj, "W") ||
         (obj.t == "token" && cvcheck.test(obj.val)) ||
