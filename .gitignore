@@ -1,0 +1,33 @@
+node_modules/
+.vscode/
+
+# exclude my many debug files
+# also excludes the config
+
+*.json
+*.txt
+
+# exclude build files
+
+*.exe
+
+# include these json files
+
+!package.json
+!package-lock.json
+!sea.json
+
+# old python import file
+
+old.py
+
+# exclude test scripts
+
+*.crs
+!examples.crs
+
+# scripts I debated/don't acutally use
+
+classes.js
+togame.js
+stuff.js

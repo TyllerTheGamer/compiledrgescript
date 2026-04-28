@@ -1,0 +1,8 @@
+{
+"main": "conv.js",
+"output": "compiler.exe",
+"mainFormat":"module",
+"disableExperimentalSEAWarning": true,
+  "useCodeCache": false,
+  "useSnapshot": false
+}
