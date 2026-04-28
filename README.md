@@ -62,7 +62,11 @@ When any variable declartion other than `global` is hit, it resets the value to 
 
 Variables can not be referenced before declartion. Global variables are declared before all scopes.
 
+Group variables can be passed variables to instead point to them.
 
+Regular variables can be strings, use `"..."` to denote a string. You can do string insertions via `{...}`, such as `"text {variable}"`, insertions insert anohter string variable value.
+
+You can not nest templates, attempting to do so will throw.
 
 
 
@@ -87,13 +91,13 @@ Internal notes color template $\color{gray}{\text{message}}$
 
 `expose <function> <trigger>` - Exposes a function via a trigger. The trigger can not start with `_crs_`, and must be 25 or less characters long due to RGE limitations.
 
-`copy <function> <newfunc>` - Copies a function. Due to the async nature of the system, you may want to be able to run logic multiple times seperately, copy duplicates a function named `function` and makes a function named `newfunc` with the same contents, and duplicates the internal variables.
+`copy <newfunc> <function>` - Copies a function. Due to the async nature of the system, you may want to be able to run logic multiple times seperately, copy duplicates a function named `function` and makes a function named `newfunc` with the same contents, and duplicates the internal variables. $\color{gray}{\text{There is a possible untested edge case with this instruction, be wary.}}$
 
 `global <name> <value>` - Defines a global variable. See variable declartions in the guide for more info.
 
 `init [...cmds]` - NOT IMPLIMENTED. Adds commands to the base initialization of the script. This is ran every time the world is loaded, should be used for bots.
 
-`globalinit [...cmds]` - Adds commands to the global initialization of the script. Ran only when then
+`globalinit [...cmds]` - Adds commands to the global initialization of the script. Ran only when the script is imported.
 
 
 #### Scope API
@@ -106,9 +110,9 @@ There are two scoped instructions that can only be used in what is referred to a
 
 The following can only be used while inside a for loop (includes inner ifs).
 
-`continue` - Skips to the next iteratoin of the current for loop.
+`continue` - Skips to the next iteration of the current for loop.
 
-`break` - Stops the for loop.
+`break` - Stops the current for loop.
 
 The rest are for any scope, meaning they can go anywhere not toplevel to the script.
 
@@ -123,6 +127,13 @@ The rest are for any scope, meaning they can go anywhere not toplevel to the scr
 `use <name> (...<params>)` - Uses a template. Params must be equal to the parameter length of the template.
 
 `return` - Stops the current function or template early.
+
+`!...` - Inserts one raw command. Allows string insertion. $\color{gray}{\text{Internally converts "!...\n" to "[...]", but you can use a comment on the same line due to ordering.}}$
+
+`[...]` - Inserts mutliple raw commands. Empty lines are ignored, seperates by newline. Allows string insertion.
+
+
+
 
 ### Examples
 
