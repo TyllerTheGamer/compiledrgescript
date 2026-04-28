@@ -13,11 +13,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            output_name: my-compiler-linux
+            output_name: compiler-linux
           - os: windows-latest
-            output_name: my-compiler.exe
+            output_name: compiler.exe
           - os: macos-latest
-            output_name: my-compiler-macos
+            output_name: compiler-mac
 
     steps:
       - name: Checkout code
