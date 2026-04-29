@@ -1,8 +1,13 @@
 
-issue log for easy intergration in VSC
+issue log for a proper log of bugs and as they're fixed, and to quickly document them as discovered
 
 
 KNOWN
+
+[Major]
+
+
+[Moderate]
 
 
 [Minor]
@@ -10,38 +15,38 @@ Extension tracing can get errors that do not exist when others are fixed, this i
 
 
 
-
-
-
 RESOLVED
 
 
+[Moderate]
+Template use's attempted to set their templates as the current scope, meaning in subsequent uses of the same template, any local variables would get redefined and thus make the compiler mad
+^ PATCH UNTESTED
 
 
-
-
-
+[Minor]
 
 
 
 INVESTIGATE
 
+[Major]
 
 
 [Moderate]
-If a template defines a local, and you call it twice in the same superscope (tested with both cases of an if) it will think the variable is defined twice
 
 
-
-
+[Minor]
 
 
 
 POSSIBLE
 
+[Major]
 
 
+[Moderate]
 
 
+[Minor]
 
 

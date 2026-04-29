@@ -1,9 +1,42 @@
-import fs from "fs";
-import { isSea } from "node:sea";
-import * as readline from "node:readline/promises";
+//import fs from "fs";
+//import { isSea } from "node:sea";
+//import * as readline from "node:readline/promises";
 //import { execSync } from "node:child_process";
 //import readline from "node:readline";
-import process, { threadCpuUsage } from "node:process";
+//import process from "node:process";
+
+
+/*BROWSER NOTES
+
+use testScript export for LSP, tell users to report any inaccurate error tracing underlines to the compilers github
+testScript returns an object, if success is false, foramt is below
+    {idx:"start index", eidx: "end index", err:"string", success: false, errs}
+    errs is an array of any other issues, each entry contains {idx, eidx, err}
+if testScript is success: true, no other outputs
+
+use compileScript exprot to get the script. Follows similar format to testScript export
+    if success is false, format is testScript WITHOUT errs array, as the compiler immediately stops at any error
+    if success is true, then format is {output, success:true}
+    the output property is the generated text file as a string, no further modification is neccassary
+
+
+*/
+
+
+// gotta dynamically import it all to support the browser
+const inBrowser = !!globalThis.window?.document;
+
+let isSea;
+let fs;
+let readline;
+let process;
+if (!inBrowser) {
+    fs = await import("node:fs");
+    isSea = (await import("node:sea")).isSea;
+    process = await import("node:process");
+    readline = await import("node:readline/promises");
+}
+
 
 const DEBUG = false;
 
@@ -123,7 +156,7 @@ async function passiveExit() {
 
 
 // lsp rn will be reaching out weirdly but that works fineeee
-const islsp = globalThis.runningCRSLSP; // custom flag
+let islsp = globalThis.runningCRSLSP; // custom flag
 
 
 
@@ -217,12 +250,15 @@ function log(...args) {
     console.log(...args);
 }
 
+let outputFile = "";
 
 function finish() {
     if (islsp) return;
     //console.log(`Writing...`);
     // do this all here
     log("Forming command lines...");
+    // for Maxikxng3's importer, if another import doesn't support this then the console will just ignore it
+    lines.unshift("@RAW");
     lines.unshift(...toplines);
     for (const t of Object.values(triggers)) {
         l(`trigger create ${worldnum} ${t.name}`);
@@ -243,9 +279,15 @@ function finish() {
     // put these at the end
     lines.push(...ginits);
     const script = lines.join("\n");
-    log("Writing commands to file...");
-    fs.writeFileSync(outFile, script);
-    log("Wrote commands");
+    if (writeOutput) {
+        if (inBrowser) throw new TypeError(`Somehow tried to write output while in a browser`);
+        log("Writing commands to file...");
+        fs.writeFileSync(outFile, script);
+        log("Wrote commands");
+    } else {
+        outputFile = outFile;
+        log("Finished building");
+    }
     //console.log(`Wrote commands`);
 }
 
@@ -336,6 +378,7 @@ let errs = []; // errors that weren't thrown
 export function testScript(file) {
     rawscript = file.replaceAll("\r", "");
     curr = rawscript;
+    islsp = true;
     lines = [];
     toplines = [];
     latelines = [];
@@ -367,10 +410,8 @@ export function testScript(file) {
     try {
         compile();
     } catch(e) {
-        //tryWrite();
         return {idx:didx, eidx: edidx, err:e.message, success: false, errs};
     }
-    //tryWrite();
     return {success: true};
 }
 
@@ -425,8 +466,60 @@ function hiterred() {
     if (erred) throw new TypeError(`Had an issue`);
 }
 
+// always set to false for the browser's functions, test script does islsp
+let writeOutput = true;
+
+export function compileScript(file, config) {
+    // write the config
+    baserot.x = config.mirrorx ? -1 : 1;
+    baserot.z = config.mirrorz ? -1 : 1;
+    basecords.x = config.xbase;
+    basecords.y = config.ybase;
+    basecords.z = config.zbase;
+    worldnum = cfg.world;
+    rawscript = file.replaceAll("\r", "");
+    curr = rawscript;
+    islsp = false;
+    writeOutput = false;
+    lines = [];
+    toplines = [];
+    latelines = [];
+    triggers = [];
+    cdat = [];
+    tdat = cdat;
+    cidx = 0;
+    tempcounter = 1;
+    currns = null;
+    currscope = null;
+    erred = false;
+    // only reason all these are lets instead of consts at definition
+    inits = [];
+    ginits = [];
+    exposes = [];
+    allns = {};
+    vstore = {};
+    tstore = {};
+    errs = [];
+    allscopes = [];
+    loops = [];
+    ploops = [];
+    dbgvlkup = {};
+    ptemps = [];
+    pifs = {};
+    followups = {};
+    bitmap = {};
+    bits = [];
+    try {
+        compile();
+    } catch(e) {
+        return {idx:didx, eidx: edidx, err:e.message, success: false};
+    }
+    return {success: true, output: outputFile};
+}
+
 // writes are for debugging
 function compile() {
+    if (inBrowser && DEBUG) throw new TypeError(`Debug is on while in the browser, this should never happen and likely means a release version was left with DEBUG on`);
     log("Started -> Cleaning text");
     cleanText();
     hiterred();
@@ -1831,6 +1924,7 @@ const spats = {
     use: {
         args: ["Wl", "E("],
         exec(name, params) {
+            // SEMI-IMPORTANT params are done very poorly, as I quickly migrated to making a new scope
             const temp = wlparse(name);
             if (temp.inuse) issue (name, `Cyclic template usage detected`);
             temp.inuse = true; // cyclic detection
@@ -1848,7 +1942,14 @@ const spats = {
                 temp.params[temp.args[i]] = args[i];
             }
             const scopestore = currscope;
-            currscope = temp;
+            //currscope = temp;
+            // have to make a new scope to allow 'local' to work
+            const usescope = {
+                type: "template",
+                d: {},
+                params: temp.params
+            };
+            currscope = usescope;
             const nsstore = currns;
             currns = allns[temp.ns];
             const body = doPatterns(clone(temp.script), tpats, "super");
@@ -1858,7 +1959,9 @@ const spats = {
             currns = nsstore;
             return {
                 op: "use",
-                body
+                body,
+                // I don't think I would need to reference it again?? but just in case, actually yeah I shouldn't... but leaving it at least for now
+                scope: usescope
             };
         }
     },
@@ -2533,5 +2636,7 @@ function constoken() {
 
 
 
-if (!islsp && !runbuilt) compile();
-else if (!islsp && runbuilt) startBuilt();
+if (!inBrowser) {
+    if (!islsp && !runbuilt) compile();
+    else if (!islsp && runbuilt) startBuilt();
+}
