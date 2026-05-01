@@ -24,7 +24,7 @@ node_modules/
 
 # old python import file
 
-old.py
+*.py
 
 # exclude test scripts
 

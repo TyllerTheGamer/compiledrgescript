@@ -1,5 +1,11 @@
 
 issue log for a proper log of bugs and as they're fixed, and to quickly document them as discovered
+known is won't/can't fix
+resolved was fixed
+fixing is in the progress of being fixed or it's known what exactly causes the issue along with a general idea of how to fix it exists, rare to have entries because issues are typically fixed in one commit
+identified are confirmed on specifics of the issue and will be fixed soon
+investigate is need to look more into the issue, but very likely it exists/known it is exists
+possible is there might be an issue, but it's not for sure, unlike investigate which is confirmed that something is wrong
 
 
 KNOWN
@@ -17,13 +23,45 @@ Extension tracing can get errors that do not exist when others are fixed, this i
 
 RESOLVED
 
+[Major]
+
 
 [Moderate]
 Template use's attempted to set their templates as the current scope, meaning in subsequent uses of the same template, any local variables would get redefined and thus make the compiler mad
 ^ PATCH UNTESTED
 
+fixed template and func variables being unable to parse if they were compiler vars (Swear I should of noticed this before, not sure how this came up but I found it)
+
 
 [Minor]
+Fixed ! command insertion messing up error tracing by improper capturing of the newline character
+
+
+
+FIXING
+
+[Major]
+
+
+[Moderate]
+
+
+[Minor]
+
+
+
+IDENTIFIED
+
+[Major]
+
+
+[Moderate]
+You can't insert newlines into a command safely (if you try it would pass a newline all the way to the end which would be really bad)
+You 
+
+[Minor]
+You can't comment out a starting /*, so //* will still be multiline comment
+globalinit does not at all care for parsing insertions
 
 
 
@@ -33,6 +71,7 @@ INVESTIGATE
 
 
 [Moderate]
+An uncalled template might not get error checking inside it at all, and a called one might get repeated checking
 
 
 [Minor]

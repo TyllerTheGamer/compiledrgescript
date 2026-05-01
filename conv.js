@@ -5,19 +5,68 @@
 //import readline from "node:readline";
 //import process from "node:process";
 
+// important reminder of idea
+// randomly thought about this and defo would be possible, mainly for browser, allow a
+// way to define/pass a command verifier that would then be ran on fully parsed raw
+// commands to handle string insertions and still verify they work, and would be able
+// to relatively easily allow proper index conversion for string insertions
 
 /*BROWSER NOTES
 
 use testScript export for LSP, tell users to report any inaccurate error tracing underlines to the compilers github
-testScript returns an object, if success is false, foramt is below
-    {idx:"start index", eidx: "end index", err:"string", success: false, errs}
-    errs is an array of any other issues, each entry contains {idx, eidx, err}
-if testScript is success: true, no other outputs
+testScript returns an object, if success is false, format is below
+    {success: false, errs}
+    errs is an array of all issues, each entry contains {idx, eidx, err}
+    idx is first character with 0 based index from start of file to start the error at, eidx is the end, and err is the message
+if success is true, format is below
+    {success: true, highlights}
+    highlights is an array of all highlighting instructions, format of each is below
+    {idx, len, type, meta}
+    idx is the start index, len is how many characters it has, type is the type of token/text here, and meta is extra data for a specific type and thus changes
+    guide of all types is in a comment below
 
-use compileScript exprot to get the script. Follows similar format to testScript export
-    if success is false, format is testScript WITHOUT errs array, as the compiler immediately stops at any error
+use compileScript export to get the built script. Follows similar format to testScript export
+    if success is false, format is below
+    {success:false, idx, eidx, err}
+    same as testScript errs array except in the base object
     if success is true, then format is {output, success:true}
     the output property is the generated text file as a string, no further modification is neccassary
+
+*/
+
+/* HIGHLIGHT TYPES KEY
+
+bit - 0 or 1 being treated as a bit value for a variable
+number - integer being treated as a number
+string - text inside a string, includes quotes
+var - a variable, meta is array with the following depending on specifics
+    when it says consider x, it is mutually exlcusive with all other considered x
+    "global" - a global variable, consider type
+    "arg" - from a template parameter, consider type
+    "comp" - a compiler variable, consider val
+    "bit" - a bit regular variable, consider val
+    "string" - a string regular variable, consider val
+    "group" - a group regular variable, consider val
+    "define" - used where the variable is defined
+parameter - a parameter inside a template definition
+encbegin - encloser starting symbol
+encend - encloser ending symbol
+insbegin - beginnning of raw command insertion wrapper (either [ or !)
+insend - ending of raw command insertion wrapper (either ] or \n, in the latter case it does not matter as it won't be included)
+keyword - reserved keyword
+func - function name
+template - template name
+raw - raw command, planned to have meta be {ran:"...", inserts:[{idx, endidx, len}...]} but currently none 
+trigger - trigger name
+namespace - a namespace title
+symbol - a single letter symbol, such as . : + - *
+escape - an escape word
+
+
+
+
+
+
 
 
 */
@@ -49,7 +98,9 @@ const defaultConfig = {
     zOrigin: 1000,
     xMirrored: false,
     zMirrored: false,
-    doCommandSpeedTradeoff: false // DOESNT WORK, turns out triggers cant run trigger executable
+    // the tradeoff is being left in in hopes that Gnar or somebody enables using trigger executable in triggers
+    doCommandSpeedTradeoff: false, // DOESNT WORK, turns out triggers cant run trigger executable
+    allowFileCommand: false,
 };
 
 const runbuilt = true;
@@ -73,7 +124,9 @@ async function startBuilt() {
     basecords.x = cfg.xOrigin;
     basecords.y = cfg.yOrigin;
     basecords.z = cfg.zOrigin;
-    if (cfg.doCommandSpeedTradeoff) console.warn(`The command speed tradeoff method does not work.`);
+    fileAllowed = cfg.allowFileCommand;
+    if (fileAllowed) console.warn(`allowFileCommand is enabled in your config! If you are using scripts you did not write, a bad actor could use file save load or savemodel to break your map. the file insertmodel command is still usable (but still only top level as with base RGE).`);
+    if (cfg.doCommandSpeedTradeoff) console.warn(`The command speed tradeoff method does not work. It has been disabled.`);
     doSpeedTradeoff = false;//cfg.doCommandSpeedTradeoff;
     worldnum = cfg.worldId;
     const args = await checkParams();
@@ -82,7 +135,7 @@ async function startBuilt() {
         await passiveExit();
         return;
     }
-    rawscript = fs.readFileSync(args[0], "utf8").replaceAll("\r", "");
+    rawscript = fs.readFileSync(args[0], "utf8");
     curr = rawscript;
     outFile = args[1];
     compile();
@@ -179,7 +232,8 @@ let baserot = {
 let worldnum = 150; // what rge world id to use
 let outFile = "./cmds.txt";
 // IMPORTANT, possibly try to change it to rewire each call to the if instead of mediator triggers
-let doSpeedTradeoff = true; // whether to do 1 command or n commands for writing
+let doSpeedTradeoff = false; // whether to do 1 command or n commands for writing
+let fileAllowed = false;
 
 
 // internal consts, wanted to be able to easily mess with spacers
@@ -206,11 +260,38 @@ const cc = Object.fromEntries(Object.entries(_basecc).map(([_, v]) => [_, {x:v[0
 
 
 
-let rawscript = islsp || runbuilt ? "" : fs.readFileSync(baseFile, "utf8").replaceAll("\r", ""); // filter window's carriage return
+let rawscript = islsp || runbuilt ? "" : fs.readFileSync(baseFile, "utf8");
 let lines = [];
 // use this for other things but it works fine
 let tempcounter = 0; // counter for making template related elements unique
 const tempnum = () => ++tempcounter; // as long as the number is saved its fine to get this as unneccassarily high as we want
+
+
+
+// static config to auto pair highlight types to stuff - might do might not
+const hlPair = {
+
+};
+
+
+let allHighlights = [];
+
+// highlight, takes end and converts to length since thats what vsc/an lsp typically wants
+function hl(idx, end, type, meta) {
+    const len = end - idx;
+    allHighlights.push({idx, len, type, meta});
+}
+
+// highlight raw, for when I can pass length quickly
+function hlr(idx, len, type, meta) {
+    allHighlights.push({idx, len, type, meta});
+}
+
+// highlight object - quick support for token objects
+const hlo = (obj, type, meta) => hl(obj.idx, obj.eidx, type, meta);
+
+
+
 
 
 
@@ -376,9 +457,17 @@ function tryWrite() {
 // expects raw file contents
 let errs = []; // errors that weren't thrown 
 export function testScript(file) {
-    rawscript = file.replaceAll("\r", "");
+    let oglog;
+    if (inBrowser) {
+        // disable console logging
+        oglog = console.log;
+        console.log = (...args) => {};
+    }
+    fileAllowed = true; // set to true just so we don't always show an error and cant really carry over the config
+    rawscript = file;
     curr = rawscript;
     islsp = true;
+    allHighlights = [];
     lines = [];
     toplines = [];
     latelines = [];
@@ -410,9 +499,12 @@ export function testScript(file) {
     try {
         compile();
     } catch(e) {
-        return {idx:didx, eidx: edidx, err:e.message, success: false, errs};
+        // convert to only use errs instead so order is always proper
+        if (e.message != "Had an issue") errs.push({idx:didx, eidx:edidx, err:e.message});
+        return {success: false, errs};
     }
-    return {success: true};
+    if (inBrowser) console.log = oglog;
+    return {success: true, highlights: allHighlights};
 }
 
 
@@ -477,7 +569,7 @@ export function compileScript(file, config) {
     basecords.y = config.ybase;
     basecords.z = config.zbase;
     worldnum = cfg.world;
-    rawscript = file.replaceAll("\r", "");
+    rawscript = file;
     curr = rawscript;
     islsp = false;
     writeOutput = false;
@@ -824,6 +916,7 @@ const opmap = {
         return i.run;
     },
     raw(o) {
+        // check no matter what
         return o.lines;
     },
     call(o) {
@@ -991,7 +1084,7 @@ function dbgwrite(file, dotemps) {
     }
     const getv = (v) => {
         const id = typeof v == "object" ? v.idx : v;
-        return `'${dbgvlkup[id]}'(${id})`;
+        return `'${dbgvlkup[id] ?? "Untraced"}'(${id ?? "N/A"})`;
     };
     const newans = {};
     for (const ns of Object.values(allns)) {
@@ -1102,7 +1195,7 @@ function dbgwrite(file, dotemps) {
         depth--;
     }
 
-    if (dofollow) {
+    if (dofollow && dotemps) {
         ulog("all follow ups");
         for (const [id, body] of Object.entries(followups)) {
             ulog(`follow up ${id}`);
@@ -1156,43 +1249,6 @@ function dbgwrite(file, dotemps) {
     fs.writeFileSync(file, unlog.join("\n"));
 }
 
-
-
-// chose to do this stuff here cus it's much more manually called in the compiler
-/*GAME PLAN CUS THIS IS KINDA STRESSFUL
-find an if, if we don't, it just ends cleanly
-if find an if, then
-    capture until the next if or we run out of space, IDEA
-        new for loop that starts, and it breaks if it's an if and adds a trigger op
-base if we find an if, add trigger op
-okay actually, gonna have it just set a flag and then use the top for loop
-ooo okay, so change of plans again, gonna be if capturing don't do i++ so it can consume
-have realized I could make it find the first if and then go on, but this is still fine so
-    not gonna go back and change it
-realized also that I should kinda really just not do call always, since it would be able
-    to always trace back at the final itd call and add em
-
-OKAY ANOTHER IDEA, since multiple itd breaks, have it so ifs are marked as valid, and only
-    the last on the upper most scope for the itd call isn't 
-
-
-
-
-okay actual idea, ifs have a tcond and fcond, being what they lead into, still do tails,
-    and escape characters both wipe rest of body and the cond, if an if has either cond,
-    fill it in, if it doesn't, just leave it,
-
-
-
-was gonna have a docond param but wouldn't even work really
-
-
-
-
-
-
-
-*/
 
 // new one
 function itd(scope, tail = []) {
@@ -1480,34 +1536,21 @@ const closers = { // start to end symbols
     "<": ">",
     "[": "]",
     "{": "}"
-}; // was gonna have a seperate for global enclosers then realized template means global uses all these
-// gonna reserve like this cus you shouldn't use any names that are actual things, no matter
-// what mainly got to realizing it would be you could do a function/template, but it would
-// require using a namespace within itself so yeah no, though ig wouldn't but still
+};
 const keywords = [
     "use", "template", "func", "namespace", "global", "local",
     "var", "for", "set", "init", "copy", "U", "D", "else", "if",
-    "call", "return", "expose", "globalinit", "break", "continue"
+    "call", "return", "expose", "globalinit", "break", "continue",
+    "mul"
 ];
 
-// actual data, the prior ones are ehh
-let allns = {}; // all namespaces for accessing other namespaces
-const exns = { // example for thinking
-    name: "namespace name for ref",
-    // was gonna be seperate for stuff, but its better to group funcs templates and vars to enable referencing them in compiler vars
-    d: {}, // will be a universal across scopes, * prefixing a variable will tell it to reference this on currns instead of currscope
-    // can't really think of anything else it would need
 
-};
-const exdataentry = { // example data entry in data
-    type: "func|template|var", // was gonna have a copy, but copy can just JSON stringify the func it references
-    val: "data obj", // was gonna have data on here, but for consistency gotta have it like this
-};
+let allns = {}; // all namespaces for accessing other namespaces
 let currns = null; // current namespace, used for global checks
 let currscope = null; // current scope, was namespace, but scope will be more flexible for stuff, and will never be a namespace actually
 let inits = []; // array of inits, will combine at some later step
 let ginits = [];
-let exposes = {}; // exposes, will be $2 $1 as the syntax, and include namespace, was about to put this in the namespace but realized becuase it doesn't care when being put into the game, it has to be here to prevent overlaps
+let exposes = {}; // exposes
 let vstore = {}; // var store, as I was thinking of mkaing this I got the idea for how to do template insertions lazily, but all regular vars from parsevar get a value here
 let tstore = {}; // template store, stores current template params, actually will have it as after a use, it resets it
 let loops = []; // loop store for unrolling and doing continue and break
@@ -1540,6 +1583,31 @@ function want(bool, obj, msg) {
 function regexpect(reg, obj) {
     if (!reg.test(obj.val)) issue(obj, `Failed regex "${reg}"`);
     else return reg.test(obj.val);
+}
+
+// made for mul and based on forcheck
+function loosenum(obj) {
+    let out;
+    if (obj.val && numc.test(obj.val)) out = {
+        type: "num",
+        num: parseInt(obj.val)
+    }; else out = parsevref(obj, true);
+    want(out.type == "num", obj, `Does not convert to a number`);
+    return out;
+}
+
+function loosestr(obj) {
+    if (obj.type == "num") return {
+        type: "str",
+        text: `${obj.num}`
+    }; else if (obj.type != "str") {
+        sissue(obj, `Expected internal type "str", got "${obj.type}"`);
+        return {
+            type: "str",
+            text: `INVALID STRING`
+        }
+    }
+    return obj;
 }
 
 
@@ -1579,8 +1647,6 @@ function _vpbase(base) {
 
 let dbgvlkup = {};
 
-// typing this as I gotta do the change to vars return objects, will be definition retursn a var, vref returns a reference, and groups hold references
-// okay thinking about this, I might never need to return variable objects? oh wait yeah okay, I do for compiler var check, but ig could be a third function that more so just is _vpbase or just DO _vpbase directly
 function parsevar(base, value) {
     const data = _vpbase(base);
     if (data.param) issue(value, `You can not declare a template parameter`);
@@ -1617,11 +1683,6 @@ function parsevar(base, value) {
                 };
             } else if (value.t == "nsget") {
                 const res = tryns(value);
-                /* gonna be tryns gets the var's value
-                if (res.type == "var") {
-                    if (!res.comp) issue(value, `Compiler vars can not reference non-compiler vars`);
-                    data.val = res.val; // point to their value, since they never change and bc its nesting, we would already be pointing at em
-                }*/
                data.val = res;
             } else if (value.t == "token") {
                 // would work for Wl always bc it can reference any of those
@@ -1632,7 +1693,6 @@ function parsevar(base, value) {
             // must be a regular var
             // kinda questioning myself making strings regular vars, but doing it so you dont need all the # prefixes and it just should be fineee
             // was gonna soft issue it but meh rn and ig just here
-            //match(value, "B") || value.t == "string" || issue(value, `Only bits or strings can be assigned to regular variables, expected "0" or "1" and got "${value.val}"`);
             if (match(value, "B")) {
                 const state = value.val == "1";
                 const id = tempnum();
@@ -1652,8 +1712,7 @@ function parsevar(base, value) {
                 refs.map((v, i) => {
                     const out = parsevref(v);
                     // trace SHOULD be proper, but might be screwed
-                    if (out.type != "str") sissue(v, `Expected type "str" for insertion, got type "${out.type}"`);
-                    val = val.replace(`@${i}@`, out.text);
+                    val = val.replace(`@${i}@`, loosestr(out).text);
                 });
                 // only for backref
                 data.val = {
@@ -1691,7 +1750,7 @@ function wlparse(obj) {
             return nameused(true, obj, true);
         }
         if (match(obj, "V")) {
-            const vari = parsevref(obj, true); // must be a compiler var
+            const vari = parsevref(obj, true); // must be a compiler var for any loose word
             return vari;
         }
     }
@@ -1704,50 +1763,36 @@ function parsevref(obj, forcecomp) {
         const data = _vpbase(obj);
         let vari;
         if (data.global) vari = nameused(true, dummytoken(obj, data.name), true);
-        //if (data.global) console.log(vari);
         else if (data.param) {
             if (!currscope?.type == "template") issue(obj, `Only templates can have parameters, currscope is "${currscope?.type}"`);
             const label = obj.val.substring(1);
             vari = currscope.params[label];
-            //console.log(vari);
             if (!vari) issue(obj, `Parameter "${label}" does not exist on this template, template params:${JSON.stringify(currscope.params)}`);
         } else vari = nameused(true, dummytoken(obj, data.name), false);
         if (forcecomp && vari.type == "group") return vari.len; // do group coercion
         if (forcecomp && !data.comp) issue(obj, `Expected a compiler variable`);
-        /* params auto map
-        if (data.param) {
-            // need to make sure it exists and such, already verified this is a template in _vpbase
-            if (!currscope.params[data.name]) issue(obj, `Parameter does not exist on template`);
-        } else vari = nameused(true, data.name, false);
-        */
-        return vari;//.val;
+        return vari;
     } else if (obj.t == "groupget") {
         if (forcecomp) issue(obj, `Expected a compiler var, got a group access instead`);
         // base and prop
         // base has to be a nsget groupget or token, prop always token, number or compiler var
         const base = parsevref(obj.base, false);
-        // was gonna do a !base check but we already throw if it wasn't a variable so this is fine
         if (!base.type == "group") issue(obj.base, `Only variable groups can be accessed with "."`);
-        // was gonna expect token, but parsevref for combiners, actually no bc of ordering that doesn't work, prolly should change that around
         expect(obj.prop, "t", "token");
         // reusing accessor as the number object is gonna be really clean
         let acc; // accessor
         if (numc.test(obj.prop.val)) {
             // a number, direct access
             const num = parseInt(obj.prop.val);
-            // don't need to check <0 bc numc doesn't allow - (would be a seperate token aswell)
-            //if (num >= base.len) issue(obj.prop, `Group "${base.name}" only has ${base.len} entries, wanted index ${num}`);
+            // don't need to check <0 bc numc doesn't allow - (the - would be a seperate token aswell)
             acc = {
                 type: "num",
                 num: num
             };
         } else {
-            const prop = parsevref(obj.prop, true); // has to be a compiler var
+            const prop = parsevref(obj.prop, true);
             acc = prop;
         }
-        //console.log(obj.prop);
-        //console.log(acc);
-        //console.log(nameused(true, obj.prop, false));
         expect(acc, "type", "num");
         if (acc.num >= base.len.num) issue(obj.prop, `Group "${obj.base.val}" only has "${base.len.num}" entries, wanted index "${acc.num}"`);
         return base.data[acc.num];
@@ -1769,8 +1814,7 @@ function parsevref(obj, forcecomp) {
         // gonna expect stuff here now bc migrating to the return stuff philosophy
         expect(aft, "type", "num");
         expect(pre, "type", "num");
-        let out = obj.sym == "+" ? pre.num + aft.num : pre.num - aft.num;
-        if (out < 0) issue(obj, `Result of a combiner can not be negative, got "${out}"`);
+        let out = obj.comb.val == "+" ? pre.num + aft.num : pre.num - aft.num;
         return {
             type: "num",
             num: out
@@ -1786,8 +1830,6 @@ const dummytoken = (base, val) => ({
     val
 });
 
-// when starting to make these I considered making a toString method on all the stuff, but it's fineee
-// NOTE ON INTENT: base token objects from CST should not be still there after patterns
 const gpats = {
     namespace: {
         args: ["W"],
@@ -1799,11 +1841,9 @@ const gpats = {
                 d: {}
             };
             allns[ns] = obj;
-            // kinda tempted to set currentscope, would let global use the base variable pattern, and it sorta would work with all I understand about what I've done
             currns = obj;
-            // yeahh setting currscope cus var groups
+            // set cus var groups
             currscope = obj;
-            // was gonna return but we can have it all parse onto the ns object
         }
     },
     copy: {
@@ -1827,8 +1867,6 @@ const gpats = {
                 if (!pcheck.test(name)) issue(arg, `Not a valid parameter`);
                 // pcheck already verified it for us
                 args.push(name);
-                // realized params mean I don't need tstore, bc it references up and if you do cyclic we can just error bc that's a forever loop
-                // we'll also be doing the whole dont pass a regular var as a compiler var via uh, well you have to do %#param, and that # means it can't be a regular var even if you passed one... cus fields don't overlap :D
                 params[name] = null;
             }
             const scope = {
@@ -1837,7 +1875,7 @@ const gpats = {
                 args,
                 params,
                 using: false, // cyclic detection
-                ns: currns.name // for when you reference another namespace's stuff
+                ns: currns.name // for when you reference another namespace's stuff and we need to point back here
             };
             // do lazy loading
             scope.script = script.val;
@@ -1853,7 +1891,6 @@ const gpats = {
                 d: {}
             };
             currscope = scope;
-            // self referencing
             currns.d[name.val] = scope;
             const body = doPatterns(script.val, fpats, "super");
             currscope = currns; // reset to namespace
@@ -1878,6 +1915,12 @@ const gpats = {
     globalinit: {
         args: ["E["],
         exec(body) {
+            for (const {val} of body.val) {
+                if (val.startsWith("file") && !val.startsWith("file insertmodel")) {
+                    if (!fileAllowed) issue(body, `File command found`);
+                    else console.warn(`Found file command "${val}"`);
+                }
+            }
             ginits.push(...body.val);
         }
     },
@@ -1916,8 +1959,7 @@ const spats = {
             // actually do, I got a safeStringify and actually amkes it impossible to tell :))))))
             return {
                 op: "call",
-                target: func,
-                //token: name
+                target: func
             }
         }
     },
@@ -1942,13 +1984,16 @@ const spats = {
                 temp.params[temp.args[i]] = args[i];
             }
             const scopestore = currscope;
-            //currscope = temp;
             // have to make a new scope to allow 'local' to work
             const usescope = {
                 type: "template",
                 d: {},
                 params: temp.params
             };
+            // copy em over, will remove ability to do %param because it was well-intentioned, but no actual reason to require it
+            for (const name in temp.params) {
+                usescope.d[name] = temp.params[name];
+            }
             currscope = usescope;
             const nsstore = currns;
             currns = allns[temp.ns];
@@ -1983,11 +2028,8 @@ const spats = {
                 const [rs, re, rst, rd] = params;
                 const forcheck = (tok, label) => {
                     let out;
-                    // so it doesn't error if it fails
-                    // old, didn't seem to work
                     if (!tok.val || !numc.test(tok.val)) out = parsevref(tok, true);
-                    // res is undefined if it errored meaning couldn't get a compiler var
-                    out ??= {
+                    else out = {
                         type: "num",
                         num: parseInt(tok.val)
                     };
@@ -2010,7 +2052,7 @@ const spats = {
                 cfg.target = ref;
             }
             const bodies = [];
-            // flag for break and continue, if you use a template, due to this being on currscope, conts and breaks can't escape
+            // flag for break and continue, if you use a template, due to this being on currscope, continues and breaks can't escape/be used top level of a template
             const inloopstore = currscope.inloop; // incase outside is also a for loop
             currscope.inloop = true;
             if (cfg.type == "group") {
@@ -2043,8 +2085,6 @@ const spats = {
             return {
                 op: "for",
                 idx: loops.length - 1
-                //bodies
-                // was gonna save vari and cfg but can't think of a reason to need to
             }
         }
     },
@@ -2072,7 +2112,6 @@ const spats = {
         args: ["Rv", "E{", "K", "E{"],
         exec(vari, script, _, escript) {
             const val = parsevref(vari);
-            // just gonna expect a bit
             expect(val, "type", "bit");
             const body = doPatterns(script.val, spats);
             body.push({op:"end"});
@@ -2084,11 +2123,6 @@ const spats = {
                 tbody: body,
                 fbody: ebody,
                 id: tempnum(), // for calling ifs
-                // took a while, but ai said this is kinda literally how cpus work, I think it mighta misunderstood me, but this should work
-                // called em tcond and fcond in the relevant ai convo, cus they're cond instructions/would of been them, but this is clearer
-                // okay was gonna not use em, but realized again why I should defo use this
-                tgo: null,
-                fgo: null
             };
         }
     }
@@ -2099,11 +2133,12 @@ const varicfg = {
         nameused(false, name, false);
         const curr = parsevar(name, val);
         currscope.d[name.val] = curr;
-        return {
+        if (curr.type == "bit") return {
             op:"set",
             idx: curr.idx,
             state: curr.state
         };
+        else return {op:"nop"};
     }
 };
 const fpats = {
@@ -2111,6 +2146,27 @@ const fpats = {
 };
 const tpats = {
     local: varicfg
+};
+
+// return tokens
+const argpats = {
+    mul: {
+        args: ["E("],
+        exec(args, token) {
+            const {idx} = token;
+            const {eidx} = args;
+            expect(args.val, "length", 2);
+            // factors
+            const f1 = loosenum(args.val[0]);
+            const f2 = loosenum(args.val[1]);
+            return {
+                t: "token",
+                val: `${f1.num * f2.num}`,
+                idx,
+                eidx
+            }
+        }
+    }
 };
 
 
@@ -2128,6 +2184,28 @@ function patiss(obj, text, override) {
     issue(obj, `${text}, full obj data: ${JSON.stringify(override ?? obj)}`);
 }
 
+// p much rip out doPatterns logic but we only use arg pats and it returns a new token
+function tryargpats(data, start) {
+    const pat = argpats[start.val];
+    if (pat) {
+        if (data.length < pat.args.length) issue(start, `Not enough arguments for keyword "${start.val}", expected ${pat.args.length} and found ${data.length}`);
+        const args = [];
+        for (const apat of pat.args) {
+            const arg = data.shift();
+            if (!match(arg, apat)) {
+                // nest it baby
+                const newarg = tryargpats(data, arg);
+                if (!newarg || !match(newarg, apat)) patiss(arg, `Keyword "${start.val}" got "${arg.val}", which is not "${matchlabels[apat]}"`);
+                args.push(newarg);
+                continue;
+            }
+            args.push(arg);
+        }
+        args.push(start);
+        return pat.exec(...args);
+    }
+}
+
 // store for if unrolling
 let allscopes = []; // funcs and templates (others are all gotten dynamically)
 function doPatterns(data, pats, scopetype) {
@@ -2139,7 +2217,6 @@ function doPatterns(data, pats, scopetype) {
         const next = data.shift();
         // check if this is just a [ for raw command insertions bc it can go anywhere between instructions
         if (match(next, "E[")) {
-            // manually check
             // soft issue bc one of the only times we for sure can continue, will try to use soft issue in more places
             if (pats == gpats) {
                 sissue(next, `Raw command insertions are not allowed in the global scope`);
@@ -2151,8 +2228,7 @@ function doPatterns(data, pats, scopetype) {
                 let txt = line.val;
                 line.refs.map((v, i) => {
                     const out = parsevref(v);
-                    if (out.type != "str") sissue(`Expected internal type "str", got "${out.type}"`);
-                    txt = txt.replace(`@${i}@`, out.text);
+                    txt = txt.replace(`@${i}@`, loosestr(out).text);
                 });
                 newlines.push(txt);
             }
@@ -2164,7 +2240,8 @@ function doPatterns(data, pats, scopetype) {
         }
         if (!match(next, "K")) patiss(next, `Got token type "${next.t}", expected type keyword`);
         const pat = pats[next.val];
-        if (!pat) issue(next, `COMPILER ISSUE: Keyword "${next.val}" does not exist! Please tell the developer they made a mistake!`);
+        // used to say compiler error, but now can be a legit user error with mul/arg patterns
+        if (!pat) issue(next, `Keyword ${next.val} can not be used here`);
         const args = [];
         let gotstar = false;
         if (data.length < pat.args.length) issue(next, `Not enough arguments for keyword "${next.val}", expected ${pat.args.length} and found ${data.length}`);
@@ -2178,17 +2255,22 @@ function doPatterns(data, pats, scopetype) {
                 }
                 continue;
             }
-            if (!match(arg, apat)) patiss(arg, `Keyword "${next.val}" got "${arg.val}", which is not "${matchlabels[apat]}"`, arg);
+            if (!match(arg, apat)) {
+                // see if argpats fixes it
+                const newarg = tryargpats(data, arg);
+                if (!newarg || !match(newarg, apat)) patiss(arg, `Keyword "${next.val}" got "${arg.val}", which is not "${matchlabels[apat]}"`);
+                args.push(newarg);
+                continue;
+            }
             args.push(arg);
         }
         // added for continue and break, pass the keyword token as a final "arg"
-
+        args.push(next);
         let res;
         if (pat.exec) {
-            res = isswrap(false, pat.exec, ...args);
+            res = isswrap(true, pat.exec, ...args);
             if (res.success) store.push(res.res);
             else {
-                sissue(next, res.msg);
                 store.push({
                     op: "ERR"
                 });
@@ -2209,7 +2291,7 @@ function doPatterns(data, pats, scopetype) {
 let currcbv = null;
 function cbvno(msg) {
     return false;
-    // was gonna do this, but nvm mmmm
+    // was gonna do this, but nvm...
 }
 
 
@@ -2299,20 +2381,6 @@ function match(obj, pat) {
 
     } else if (check == "K") {
 
-    } else if (check == "K") {
-
-    } else if (check == "K") {
-
-    } else if (check == "K") {
-
-    } else if (check == "K") {
-
-    } else if (check == "K") {
-
-    } else if (check == "K") {
-
-    } else if (check == "K") {
-
     }
 }
 
@@ -2336,23 +2404,25 @@ function cleanText() {
     // ty gemini
     // Regex: Find !, then capture everything until the newline or end of file
     // Replace using the first group (the command content)
-    curr = curr.replace(/!(.*)$/gm, (match, commandContent) => {
-        return `[${commandContent.trim()}]`; // was a \n, but if we have \n it turns "!...n" into "[...]n" thus offsetting text truth
+    curr = curr.replace(/(?<=\s*)!(.*?)(\r$|$\n)/gm, (match, commandContent) => {
+        return `[${commandContent}]`;  // treats "!" as "[" and newline as "]"
     });
-}2
+    if (DEBUG) fs.writeFileSync("_currcleaned.crs", curr);
+}
 
 // returns {val, refs}, refs is array of replacer values
-function parseStr(str) {
+function parseStr(str, doHl) {
     const refs = [];
     let val = "";
     let capping = false;
     let capped = "";
+    let hasHl = true; // semi niche, whether we have highlights to do, default is initial "
+    let sidx = cidx - 1; // for highlighting, include start "
     while (str.length > 0) {
         if (capping) {
             if (str[0] == "}") {
                 capping = false;
                 str = str.slice(1);
-                cidx++;
                 // kinda questionable, but works
                 const rcurr = curr;
                 const rcdat = cdat;
@@ -2364,16 +2434,23 @@ function parseStr(str) {
                 // bc we haven't pushed yet we don't need to do length - 1
                 val += `@${refs.length}@`;
                 refs.push(cdat[0]);
-                //cidx = ridx;
                 curr = rcurr;
                 cdat = rcdat;
+                // highlight and add for ending }
+                hl(cidx, cidx + 1, "insend");
+                cidx++;
             } else {
                 // capture the token
                 capped += str[0];
                 str = str.slice(1);
-                cidx++;
+                // parseText will increase the idx
             }
         } else if (str[0] == "{") {
+            if (hasHl) {
+                hasHl = false;
+                hl(sidx, cidx - 1, "string");
+            }
+            hl(cidx, cidx + 1, "insbeg")
             capping = true;
             capped = "";
             str = str.slice(1);
@@ -2381,11 +2458,16 @@ function parseStr(str) {
         } else if (str[0] == "}") {
             throw new TypeError(`Found } in string without matching {`);
         } else {
+            if (!hasHl) {
+                hasHl = true;
+                sidx = cidx;
+            }
             val += str[0];
             str = str.slice(1);
             cidx++;
         }
     }
+    if (hasHl) hl(sidx, cidx + 1, "string");
     if (capping) throw new TypeError(`Unclosed { in string`);
     return {val, refs};
 }
@@ -2404,7 +2486,6 @@ function parseText() {
     // consume starter whitespace
     consows();
     while (curr.length > 0) {
-        // for funny
         looklog.push(curr.replace(/\s+/g, " ").substring(0, 80));
         // check if we need to enclose
         const closer = closers[curr[0]];
@@ -2444,22 +2525,21 @@ function parseText() {
             ecloser = closer;
             let newtxt = "";
             edepth = 1;
-            curr = curr.slice(1);
+            cshift();
+            cidx++;
             let added = 0; // count only for [ enclosers
             while (true) {
                 if (curr.length == 0) throw new TypeError(`Ran out of script trying to close ${estart}`);
                 if (curr[0] == ecloser) {
                     // check this first
                     edepth--;
-                    if (edepth == 0) break; // do this here cus no point in the while loop doing it
+                    if (edepth == 0) break;
                 }
                 if (curr[0] == estart) edepth++;
                 added++;
                 newtxt += cshift();
             }
             cshift(); // remove the ending encloser
-            // add for the encloser start
-            cidx++;
             // save em (called real)
             const rcurr = curr;
             const rcdat = cdat;
@@ -2469,10 +2549,9 @@ function parseText() {
             // kinda very after making the rest of this I'm doing this, got to making the op raw and realized I need to not tokenify the [ encloser
             if (estart == "[") {
                 didx = startidx;
-                cidx += added;
-                edidx = cidx;
+                edidx = cidx + added;
                 // kinda lazy still doing all the prior stuff but meh
-                const lines = curr.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+                const lines = curr.split("\n").filter(l => l.trim().length > 0);
                 // was gonna have a new property, but betetr to just shove it in val
                 cdat = lines.map((v, i) => {
                     if (v.includes("@")) throw new TypeError(`Raw command insertions can not contain @, found one at insertion line ${i+1}`);
@@ -2494,6 +2573,7 @@ function parseText() {
             cdat.push(data);
         } else {
             if (stokens.includes(curr[0])) {
+                hlr(cidx, 1, "symbol");
                 cdat.push({
                     t: "token",
                     val: curr[0],
@@ -2509,6 +2589,7 @@ function parseText() {
                 if (!res) throw TypeError(`Failed parsing when ${curr.length} symbols were left, "${curr}"`);
                 curr = curr.slice(res[0].length);
                 if (keywords.includes(res[0])) {
+                    hlr(cidx, res[0].length, "keyword");
                     cdat.push({
                         t: "keyword",
                         val: res[0],
@@ -2545,12 +2626,11 @@ function hasroom(idx) {
 }
 
 function haspre(idx) {
-    if (idx == 0) throw new TypeError(`Found symbol "${cdat[i]}" with no room before`);
-    
+    if (idx == 0) throw new TypeError(`Found symbol "${cdat[idx]}" with no room before`);
 }
 
 function hasaft(idx) {
-    if (idx == cdat.length - 1) throw new TypeError(`Found symbol "${cdat[i]}" with no room after`);
+    if (idx == cdat.length - 1) throw new TypeError(`Found symbol "${cdat[idx]}" with no room after`);
 }
 
 
@@ -2597,12 +2677,12 @@ function polishParse() {
         if (combiners.includes(cdat[i].val)) {
             setidxs(cdat[i]);
             hasroom(i);
-            const sym = cdat[i].val;
+            const comb = cdat[i];
             const pre = cdat[i-1];
             const aft = cdat[i+1];
             cdat[i] = {
                 t: "combiner",
-                sym,
+                comb,
                 pre,
                 aft,
                 idx: pre.idx,

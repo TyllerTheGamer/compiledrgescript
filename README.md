@@ -35,9 +35,9 @@ All `<name>` values are the name of the item regarded in the documentation, shou
 
 A bit is 0 or 1.
 
-A compiler var can be a number or a reference to another compiler var. A number is defined as a positive integer or 0.
+A compiler var can be a reference to: another compiler var, a number (not a bit), a function, or a template.
 
-A group var uses `<...>` to hold bits, strings, or more groups. An example is `<0 1 0 1>`, and you can do this with strings or groups aswell. They are coercable to a compiler var equal to their length, as in you can treat them as a compiler var equal to their length. A group var can not contain compiler vars due to issues with how you would specify a bit or compiler var, and how you would even accessor them.
+A group var uses `<...>` to hold bits, strings, or more groups. An example is `<0 1 0 1>`, and you can have strings or groups in them aswell. They are coercable to a compiler var equal to their length, as in you can treat them as a compiler var equal to their length. A group var can not contain compiler vars due to issues with how you would specify a bit or compiler var, and how you would even accessor them.
 
 A string is text wrapped in `"`, such as `"text"`. In raw commands and strings, you can do text insertion.
 
@@ -45,7 +45,7 @@ Namespaces are used to make code dynamic. You can reference global values, funct
 
 There are 3 instructions to define variables in different scopes, so how variable declartions work is defined below.
 
-Variables can be compiler or regular. You define a compiler var by prefixing the variable name with `#`, which becomes apart of its name. In order to reference a template parameter, you must prefix `%`, and for global variables `*`, you must do the global variable reference even toplevel. If you have a global compiler var for example, you would do `*#variable`.
+Variables can be compiler or regular. You define a compiler var by prefixing the variable name with `#`, which becomes apart of its name. Template parameters act as variables in the scope, for backwards compatibility and if you wish to specify, you can prefix `%` to reference them, and for global variables `*`, you must do the global variable reference even toplevel. If you have a global compiler var for example, you would do `*#variable`.
 
 Variable declartions use the `definer <name> <value>` syntax, `name` must be a valid variable name, `value` must be a valid value, and will be the default state for bits, and `define` will be the specific instruction.
 
@@ -55,7 +55,7 @@ Variables can not be referenced before declartion. Global variables are declared
 
 Group variables can be passed variables to instead point to them.
 
-Regular variables can be strings, use `"..."` to denote a string. You can do string insertions via `{...}`, such as `"text {variable}"`, insertions insert anohter string variable value.
+Regular variables can be strings, use `"..."` to denote a string. You can do string insertions via `{...}`, such as `"text {variable}"`, insertions insert anohter string variable value. You can not use newlines in raw command insertions, this is a 
 
 You can not nest templates, attempting to do so will throw.
 
@@ -69,10 +69,6 @@ Single line comments use `//`, and multiline start with `/\*` and end with `\*/`
 
 
 #### Toplevel API
-
-Internal notes color template $\color{gray}{\text{message}}$
-
-
 
 `namespace <name>` - Declare the current namespace, you can not repeat existing namespaces. See the [parent header](#compiler) for more info.
 
